@@ -1,0 +1,347 @@
+﻿﻿﻿﻿@page "/"
+@rendermode InteractiveServer
+@using AIAgent.Core.Models
+@using AIAgent.Core.Services
+@inject IChatService ChatService
+@inject ISettingsService SettingsService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+
+<PageTitle>AI Agent - 对话</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudGrid>
+        <!-- 会话列表 -->
+        <MudItem xs="12" md="3">
+            <MudCard Elevation="2" Class="rounded-lg" Style="height: calc(100vh - 120px);">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6" Style="color: #333333;">会话列表</MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="CreateNewSession" />
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudList T="ChatSession" Dense="true" Style="overflow-y: auto; max-height: calc(100vh - 200px);">
+                        @foreach (var session in Sessions)
+                        {
+                            <MudListItem T="ChatSession" 
+                                        OnClick="() => SelectSession(session)"
+                                        Class="@GetSessionClass(session)"
+                                        Style="border-radius: 8px; margin-bottom: 4px;">
+                                <MudText Typo="Typo.body1" Style="color: #333333;">@session.Title</MudText>
+                                <MudText Typo="Typo.caption" Style="color: #5A5A5A;">@session.UpdatedAt.ToString("MM-dd HH:mm")</MudText>
+                            </MudListItem>
+                        }
+                    </MudList>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- 对话区域 -->
+        <MudItem xs="12" md="9">
+            <MudCard Elevation="2" Class="rounded-lg" Style="height: calc(100vh - 120px); display: flex; flex-direction: column;">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6" Style="color: #333333;">
+                            @(CurrentSession?.Title ?? "请选择或创建会话")
+                        </MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        @if (CurrentSession != null)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="DeleteCurrentSession" />
+                        }
+                    </CardHeaderActions>
+                </MudCardHeader>
+                
+                <MudCardContent Style="flex: 1; overflow-y: auto; background-color: #F5F5DC;" id="message-container">
+                    @if (Messages.Count == 0)
+                    {
+                        <MudText Align="Align.Center" Style="color: #5A5A5A; margin-top: 50px;">
+                            开始一个新的对话吧
+                        </MudText>
+                    }
+                    else
+                    {
+                        @foreach (var message in Messages)
+                        {
+                            <div class="message-container @GetMessageClass(message)">
+                                <MudPaper Elevation="1" 
+                                         Class="pa-3 rounded-lg message-paper" 
+                                         Style="@GetMessageStyle(message)">
+                                    <div class="message-content" style="@(message.Role == "user" ? "color: #FFFFFF;" : "color: #333333;")">
+                                        @((MarkupString)FormatMessageContent(message.Content))
+                                    </div>
+                                    <MudText Typo="Typo.caption" 
+                                             Style="@(message.Role == "user" ? "color: #E8E8E8; display: block; margin-top: 4px;" : "color: #5A5A5A; display: block; margin-top: 4px;")">
+                                        @message.Timestamp.ToString("HH:mm:ss")
+                                    </MudText>
+                                </MudPaper>
+                            </div>
+                        }
+                    }
+                    
+                    @if (IsStreaming && !string.IsNullOrEmpty(StreamingContent))
+                    {
+                        <div class="message-container assistant-message">
+                            <MudPaper Elevation="1" Class="pa-3 rounded-lg message-paper" Style="background-color: #FFFFFF; border: 1px solid #E8E8E8;">
+                                <div class="message-content" style="color: #333333;">
+                                    @((MarkupString)FormatMessageContent(StreamingContent))
+                                    <span class="cursor-blink">|</span>
+                                </div>
+                            </MudPaper>
+                        </div>
+                    }
+                </MudCardContent>
+
+                <MudCardActions Style="background-color: #FFFFFF; border-top: 1px solid #E8E8E8;">
+                    @if (CurrentSession == null)
+                    {
+                        <MudButton Variant="Variant.Filled" 
+                                   Color="Color.Primary" 
+                                   OnClick="CreateNewSession"
+                                   FullWidth="true"
+                                   StartIcon="@Icons.Material.Filled.Add"
+                                   Class="mx-2">
+                            创建新会话开始对话
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudTextField @bind-Value="CurrentMessage"
+                                      Placeholder="输入消息，按回车发送..."
+                                      Variant="Variant.Outlined"
+                                      FullWidth="true"
+                                      Disabled="IsStreaming"
+                                      OnKeyDown="OnKeyDown"
+                                      Adornment="Adornment.End"
+                                      AdornmentIcon="@Icons.Material.Filled.Send"
+                                      OnAdornmentClick="SendMessage"
+                                      Class="mx-2"
+                                      Style="--mud-palette-primary: #7CB9B9;" />
+                    }
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<style>
+    .message-container {
+        display: flex;
+        margin-bottom: 12px;
+    }
+    .user-message {
+        justify-content: flex-end;
+    }
+    .assistant-message {
+        justify-content: flex-start;
+    }
+    .message-paper {
+        max-width: 80%;
+        word-wrap: break-word;
+        user-select: text;
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+    }
+    .message-content {
+        white-space: pre-wrap;
+        word-break: break-word;
+        user-select: text;
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+    }
+    .cursor-blink {
+        animation: blink-animation 1s infinite;
+        color: #7CB9B9;
+        font-weight: bold;
+    }
+</style>
+
+<style>
+    @@keyframes blink-animation {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0; }
+    }
+</style>
+
+@code {
+    private List<AIAgent.Core.Models.ChatSession> Sessions { get; set; } = new();
+    private AIAgent.Core.Models.ChatSession? CurrentSession { get; set; }
+    private List<AIAgent.Core.Models.ChatMessage> Messages { get; set; } = new();
+    private string CurrentMessage { get; set; } = "";
+    private bool IsStreaming { get; set; }
+    private string StreamingContent { get; set; } = "";
+    private string UserId { get; set; } = "default-user";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSessions();
+    }
+
+    private async Task LoadSessions()
+    {
+        Sessions = await ChatService.GetUserSessionsAsync(UserId);
+        if (Sessions.Any())
+        {
+            await SelectSession(Sessions.First());
+        }
+    }
+
+    private async Task CreateNewSession()
+    {
+        CurrentSession = await ChatService.CreateSessionAsync(UserId);
+        Sessions.Insert(0, CurrentSession);
+        Messages.Clear();
+        StateHasChanged();
+    }
+
+    private async Task SelectSession(AIAgent.Core.Models.ChatSession session)
+    {
+        CurrentSession = session;
+        var fullSession = await ChatService.GetSessionAsync(session.Id);
+        if (fullSession != null)
+        {
+            Messages = fullSession.Messages.OrderBy(m => m.Timestamp).ToList();
+        }
+        StateHasChanged();
+    }
+
+    private async Task DeleteCurrentSession()
+    {
+        if (CurrentSession != null)
+        {
+            await ChatService.DeleteSessionAsync(CurrentSession.Id);
+            Sessions.Remove(CurrentSession);
+            CurrentSession = Sessions.FirstOrDefault();
+            Messages.Clear();
+            if (CurrentSession != null)
+            {
+                await SelectSession(CurrentSession);
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentMessage) || CurrentSession == null || IsStreaming)
+            return;
+
+        var userMessage = CurrentMessage;
+        CurrentMessage = "";
+        
+        // Add user message to UI
+        Messages.Add(new AIAgent.Core.Models.ChatMessage
+        {
+            SessionId = CurrentSession.Id,
+            UserId = UserId,
+            Role = "user",
+            Content = userMessage,
+            Timestamp = DateTime.UtcNow
+        });
+        
+        StateHasChanged();
+        await ScrollToBottom();
+
+        // Start streaming
+        IsStreaming = true;
+        StreamingContent = "";
+        StateHasChanged();
+
+        var request = new AIAgent.Core.Models.ChatRequest
+        {
+            SessionId = CurrentSession.Id,
+            UserId = UserId,
+            Message = userMessage
+        };
+
+        try
+        {
+            await foreach (var chunk in ChatService.SendMessageStreamAsync(request))
+            {
+                StreamingContent += chunk;
+                StateHasChanged();
+                await ScrollToBottom();
+                await Task.Delay(30); // 控制打字速度
+            }
+
+            // Save the complete message
+            if (!string.IsNullOrEmpty(StreamingContent))
+            {
+                Messages.Add(new AIAgent.Core.Models.ChatMessage
+                {
+                    SessionId = CurrentSession.Id,
+                    UserId = UserId,
+                    Role = "assistant",
+                    Content = StreamingContent,
+                    Timestamp = DateTime.UtcNow,
+                    ModelUsed = "qwen"
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"发送消息失败: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsStreaming = false;
+            StreamingContent = "";
+            StateHasChanged();
+            await ScrollToBottom();
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "document.getElementById('message-container').scrollTop = document.getElementById('message-container').scrollHeight");
+        }
+        catch { }
+    }
+
+    private string FormatMessageContent(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return "";
+        
+        // 转义 HTML 特殊字符
+        var encoded = System.Net.WebUtility.HtmlEncode(content);
+        
+        // 将换行符转换为 <br>
+        encoded = encoded.Replace("\n", "<br>");
+        
+        return encoded;
+    }
+
+    private string GetSessionClass(AIAgent.Core.Models.ChatSession session)
+    {
+        return session.Id == CurrentSession?.Id ? "mud-selected-item" : "";
+    }
+
+    private string GetMessageClass(AIAgent.Core.Models.ChatMessage message)
+    {
+        return message.Role == "user" ? "user-message" : "assistant-message";
+    }
+
+    private string GetMessageStyle(AIAgent.Core.Models.ChatMessage message)
+    {
+        return message.Role == "user" 
+            ? "background-color: #7CB9B9;" 
+            : "background-color: #FFFFFF; border: 1px solid #E8E8E8;";
+    }
+}

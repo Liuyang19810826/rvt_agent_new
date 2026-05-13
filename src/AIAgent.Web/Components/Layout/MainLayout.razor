@@ -1,0 +1,57 @@
+﻿﻿﻿﻿@inherits LayoutComponentBase
+
+<MudThemeProvider Theme="ChineseStyleTheme" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1" Style="background-color: #7CB9B9;">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+        <MudText Typo="Typo.h5" Class="ml-3" Style="color: #333333;">AI Agent</MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Settings" Color="Color.Inherit" Href="/settings" />
+    </MudAppBar>
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2" Style="background-color: #F5F5DC;">
+        <NavMenu />
+    </MudDrawer>
+    <MudMainContent Class="mt-16 pa-4" Style="background-color: #F5F5DC; min-height: 100vh;">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+
+    private void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    private MudTheme ChineseStyleTheme = new MudTheme
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#7CB9B9",
+            Secondary = "#5A5A5A",
+            Tertiary = "#D4A5A5",
+            Background = "#F5F5DC",
+            Surface = "#FFFFFF",
+            AppbarBackground = "#7CB9B9",
+            DrawerBackground = "#F5F5DC",
+            TextPrimary = "#333333",
+            TextSecondary = "#5A5A5A",
+            ActionDefault = "#7CB9B9",
+            ActionDisabled = "#E8E8E8",
+            ActionDisabledBackground = "#F5F5DC",
+            Divider = "#E8E8E8",
+            DividerLight = "#F5F5DC",
+            TableHover = "#E8E8E8",
+            TableStriped = "#F5F5DC",
+        },
+        LayoutProperties = new LayoutProperties
+        {
+            DefaultBorderRadius = "8px",
+            AppbarHeight = "64px"
+        }
+    };
+}

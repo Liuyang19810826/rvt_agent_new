@@ -1,0 +1,196 @@
+@page "/ip-management"
+@rendermode InteractiveServer
+@using AIAgent.Core.Models
+@using AIAgent.Core.Services
+@inject IMonitoringService MonitoringService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>AI Agent - IP管理</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4" Style="color: #333333;">IP地址管理</MudText>
+    
+    <MudCard Elevation="2" Class="rounded-lg">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6" Style="color: #333333;">IP访问记录</MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                <MudButton Variant="Variant.Filled" 
+                          Color="Color.Primary" 
+                          OnClick="LoadIpStats"
+                          StartIcon="@Icons.Material.Filled.Refresh">
+                    刷新
+                </MudButton>
+            </CardHeaderActions>
+        </MudCardHeader>
+        <MudCardContent>
+            @if (IpStats != null)
+            {
+                <MudTable Items="IpStats" Dense="true" Hover="true" Filter="new Func<IpStatistics,bool>(FilterFunc)">
+                    <ToolBarContent>
+                        <MudTextField @bind-Value="SearchString" 
+                                     Placeholder="搜索IP地址..." 
+                                     Adornment="Adornment.Start"
+                                     AdornmentIcon="@Icons.Material.Filled.Search" 
+                                     IconSize="Size.Medium"
+                                     Class="mt-0"></MudTextField>
+                    </ToolBarContent>
+                    <HeaderContent>
+                        <MudTh>IP地址</MudTh>
+                        <MudTh>访问次数</MudTh>
+                        <MudTh>Token使用量</MudTh>
+                        <MudTh>首次访问</MudTh>
+                        <MudTh>最后访问</MudTh>
+                        <MudTh>状态</MudTh>
+                        <MudTh>备注</MudTh>
+                        <MudTh>操作</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.IpAddress</MudTd>
+                        <MudTd>@context.AccessCount</MudTd>
+                        <MudTd>@context.TotalTokens</MudTd>
+                        <MudTd>@context.FirstAccess.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                        <MudTd>@context.LastAccess.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                        <MudTd>
+                            @if (context.IsBlacklisted)
+                            {
+                                <MudChip T="string" Color="Color.Error" Size="Size.Small">已拉黑</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small">正常</MudChip>
+                            }
+                        </MudTd>
+                        <MudTd>@(context.Remark ?? "-")</MudTd>
+                        <MudTd>
+                            @if (context.IsBlacklisted)
+                            {
+                                <MudButton Variant="Variant.Outlined" 
+                                          Color="Color.Success" 
+                                          Size="Size.Small"
+                                          OnClick="() => WhitelistIp(context.IpAddress)">
+                                    解除拉黑
+                                </MudButton>
+                            }
+                            else
+                            {
+                                <MudButton Variant="Variant.Outlined" 
+                                          Color="Color.Error" 
+                                          Size="Size.Small"
+                                          OnClick="() => BlacklistIp(context.IpAddress)">
+                                    拉黑
+                                </MudButton>
+                            }
+                            <MudButton Variant="Variant.Text" 
+                                      Color="Color.Primary" 
+                                      Size="Size.Small"
+                                      OnClick="() => ViewLogs(context.IpAddress)"
+                                      Class="ml-2">
+                                查看日志
+                            </MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager />
+                    </PagerContent>
+                </MudTable>
+            }
+            else
+            {
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            }
+        </MudCardContent>
+    </MudCard>
+
+    <!-- 访问日志对话框 -->
+    <MudDialog @bind-Visible="ShowLogsDialog" MaxWidth="MaxWidth.Large" FullWidth="true">
+        <TitleContent>
+            <MudText Typo="Typo.h6">IP访问日志 - @SelectedIp</MudText>
+        </TitleContent>
+        <DialogContent>
+            @if (AccessLogs != null)
+            {
+                <MudTable Items="AccessLogs" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>时间</MudTh>
+                        <MudTh>端点</MudTh>
+                        <MudTh>方法</MudTh>
+                        <MudTh>Token</MudTh>
+                        <MudTh>响应时间(ms)</MudTh>
+                        <MudTh>状态码</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                        <MudTd>@context.Endpoint</MudTd>
+                        <MudTd>@context.Method</MudTd>
+                        <MudTd>@(context.TokenUsed?.ToString() ?? "-")</MudTd>
+                        <MudTd>@(context.ResponseTimeMs?.ToString() ?? "-")</MudTd>
+                        <MudTd>@context.StatusCode</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </DialogContent>
+        <DialogActions>
+            <MudButton Color="Color.Primary" OnClick="() => ShowLogsDialog = false">关闭</MudButton>
+        </DialogActions>
+    </MudDialog>
+</MudContainer>
+
+@code {
+    private List<AIAgent.Core.Models.IpStatistics>? IpStats { get; set; }
+    private List<AIAgent.Core.Models.AccessLog>? AccessLogs { get; set; }
+    private string SearchString { get; set; } = "";
+    private bool ShowLogsDialog { get; set; }
+    private string SelectedIp { get; set; } = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadIpStats();
+    }
+
+    private async Task LoadIpStats()
+    {
+        IpStats = await MonitoringService.GetIpStatisticsAsync();
+    }
+
+    private bool FilterFunc(AIAgent.Core.Models.IpStatistics element)
+    {
+        if (string.IsNullOrWhiteSpace(SearchString))
+            return true;
+        return element.IpAddress.Contains(SearchString, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task BlacklistIp(string ipAddress)
+    {
+        var parameters = new DialogParameters();
+        parameters.Add("ContentText", $"确定要拉黑 IP {ipAddress} 吗？");
+        parameters.Add("ButtonText", "拉黑");
+        parameters.Add("Color", Color.Error);
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("确认拉黑", parameters);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await MonitoringService.BlacklistIpAsync(ipAddress, "手动拉黑");
+            Snackbar.Add($"IP {ipAddress} 已拉黑", Severity.Success);
+            await LoadIpStats();
+        }
+    }
+
+    private async Task WhitelistIp(string ipAddress)
+    {
+        await MonitoringService.WhitelistIpAsync(ipAddress);
+        Snackbar.Add($"IP {ipAddress} 已解除拉黑", Severity.Success);
+        await LoadIpStats();
+    }
+
+    private async Task ViewLogs(string ipAddress)
+    {
+        SelectedIp = ipAddress;
+        AccessLogs = await MonitoringService.GetAccessLogsAsync(ipAddress, maxResults: 50);
+        ShowLogsDialog = true;
+    }
+}

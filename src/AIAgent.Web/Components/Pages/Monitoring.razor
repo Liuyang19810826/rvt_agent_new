@@ -1,0 +1,132 @@
+@page "/monitoring"
+@rendermode InteractiveServer
+@using AIAgent.Core.Models
+@using AIAgent.Core.Services
+@inject IMonitoringService MonitoringService
+@inject ISnackbar Snackbar
+
+<PageTitle>AI Agent - 监控面板</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4" Style="color: #333333;">系统监控</MudText>
+    
+    @if (Stats != null)
+    {
+        <!-- 统计卡片 -->
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" Class="rounded-lg" Style="background-color: #7CB9B9;">
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6" Style="color: #FFFFFF;">总访问次数</MudText>
+                        <MudText Typo="Typo.h3" Style="color: #FFFFFF;">@Stats.TotalAccessCount</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" Class="rounded-lg" Style="background-color: #8FBC8F;">
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6" Style="color: #FFFFFF;">活跃会话</MudText>
+                        <MudText Typo="Typo.h3" Style="color: #FFFFFF;">@Stats.ActiveSessions</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" Class="rounded-lg" Style="background-color: #D4A5A5;">
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6" Style="color: #FFFFFF;">独立IP数</MudText>
+                        <MudText Typo="Typo.h3" Style="color: #FFFFFF;">@Stats.UniqueIps</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" Class="rounded-lg" Style="background-color: #5A5A5A;">
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6" Style="color: #FFFFFF;">Token使用量</MudText>
+                        <MudText Typo="Typo.h3" Style="color: #FFFFFF;">@Stats.TotalTokensUsed</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        <!-- 分时段统计 -->
+        <MudCard Elevation="2" Class="rounded-lg mb-4">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6" Style="color: #333333;">分时段访问统计</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudTable Items="Stats.HourlyStatistics" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>时间</MudTh>
+                        <MudTh>访问次数</MudTh>
+                        <MudTh>独立IP</MudTh>
+                        <MudTh>Token使用量</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Hour.ToString("yyyy-MM-dd HH:00")</MudTd>
+                        <MudTd>@context.AccessCount</MudTd>
+                        <MudTd>@context.UniqueIps</MudTd>
+                        <MudTd>@context.TotalTokens</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudCardContent>
+        </MudCard>
+
+        <!-- 热门IP -->
+        <MudCard Elevation="2" Class="rounded-lg">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6" Style="color: #333333;">访问最多的IP</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudTable Items="Stats.TopIps" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>IP地址</MudTh>
+                        <MudTh>访问次数</MudTh>
+                        <MudTh>Token使用量</MudTh>
+                        <MudTh>首次访问</MudTh>
+                        <MudTh>最后访问</MudTh>
+                        <MudTh>状态</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.IpAddress</MudTd>
+                        <MudTd>@context.AccessCount</MudTd>
+                        <MudTd>@context.TotalTokens</MudTd>
+                        <MudTd>@context.FirstAccess.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                        <MudTd>@context.LastAccess.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                        <MudTd>
+                            @if (context.IsBlacklisted)
+                            {
+                                <MudChip T="string" Color="Color.Error" Size="Size.Small">已拉黑</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small">正常</MudChip>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudCardContent>
+        </MudCard>
+    }
+    else
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+</MudContainer>
+
+@code {
+    private AIAgent.Core.Models.DashboardStats? Stats { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStats();
+    }
+
+    private async Task LoadStats()
+    {
+        Stats = await MonitoringService.GetDashboardStatsAsync();
+    }
+}

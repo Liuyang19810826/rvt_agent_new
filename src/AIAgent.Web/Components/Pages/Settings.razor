@@ -1,0 +1,203 @@
+@page "/settings"
+@rendermode InteractiveServer
+@using AIAgent.Core.Models
+@using AIAgent.Core.Services
+@inject ISettingsService SettingsService
+@inject ISnackbar Snackbar
+
+<PageTitle>AI Agent - 设置</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4" Style="color: #333333;">AI 提供商设置</MudText>
+    
+    <MudCard Elevation="2" Class="rounded-lg mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6" Style="color: #333333;">配置列表（最多3个）</MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                <MudButton Variant="Variant.Filled" 
+                          Color="Color.Primary" 
+                          OnClick="AddNewProvider"
+                          Disabled="(AISettings.Providers?.Count ?? 0) >= 3"
+                          StartIcon="@Icons.Material.Filled.Add">
+                    添加配置
+                </MudButton>
+            </CardHeaderActions>
+        </MudCardHeader>
+        <MudCardContent>
+            @foreach (var provider in AISettings.Providers ?? new List<AIProviderConfig>())
+            {
+                <MudPaper Elevation="1" Class="pa-4 mb-4 rounded-lg" Style="background-color: #FFFFFF;">
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="provider.Name" 
+                                         Label="配置名称" 
+                                         Variant="Variant.Outlined"
+                                         FullWidth="true"
+                                         Class="mb-2" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="provider.Model" 
+                                         Label="模型名称" 
+                                         Variant="Variant.Outlined"
+                                         FullWidth="true"
+                                         Class="mb-2"
+                                         HelperText="例如: qwen-max, qwen-plus" />
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="provider.Endpoint" 
+                                         Label="API Endpoint" 
+                                         Variant="Variant.Outlined"
+                                         FullWidth="true"
+                                         Class="mb-2"
+                                         HelperText="例如: https://dashscope.aliyuncs.com/compatible-mode/v1" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="provider.ApiKey" 
+                                         Label="API Key" 
+                                         Variant="Variant.Outlined"
+                                         FullWidth="true"
+                                         InputType="InputType.Password"
+                                         Class="mb-2" />
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <MudNumericField @bind-Value="provider.Temperature" 
+                                            T="float"
+                                            Label="Temperature" 
+                                            Variant="Variant.Outlined"
+                                            Min="0.0f" Max="2.0f" Step="0.1f"
+                                            FullWidth="true"
+                                            Class="mb-2" />
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <MudNumericField @bind-Value="provider.MaxTokens" 
+                                            T="int"
+                                            Label="Max Tokens" 
+                                            Variant="Variant.Outlined"
+                                            Min="1" Max="8192"
+                                            FullWidth="true"
+                                            Class="mb-2" />
+                        </MudItem>
+                        <MudItem xs="12" Class="d-flex justify-space-between align-center">
+                            <MudSwitch @bind-Value="provider.IsActive" 
+                                      Color="Color.Primary"
+                                      Label="设为默认"
+                                      Disabled="provider.IsActive"
+                                      @onclick="() => SetActiveProvider(provider)" />
+                            <div>
+                                <MudButton Variant="Variant.Outlined" 
+                                          Color="Color.Primary"
+                                          OnClick="() => TestProvider(provider)"
+                                          Class="mr-2">
+                                    测试连接
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" 
+                                          Color="Color.Error"
+                                          OnClick="() => RemoveProvider(provider)">
+                                    删除
+                                </MudButton>
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+            
+            @if (!(AISettings.Providers?.Any() ?? false))
+            {
+                <MudText Align="Align.Center" Style="color: #5A5A5A; padding: 40px;">
+                    暂无配置，请点击"添加配置"按钮创建
+                </MudText>
+            }
+        </MudCardContent>
+        <MudCardActions Class="justify-end pa-4">
+            <MudButton Variant="Variant.Filled" 
+                      Color="Color.Primary" 
+                      OnClick="SaveSettings"
+                      StartIcon="@Icons.Material.Filled.Save"
+                      Size="Size.Large">
+                保存设置
+            </MudButton>
+        </MudCardActions>
+    </MudCard>
+</MudContainer>
+
+@code {
+    private AISettings AISettings { get; set; } = new() { Providers = new List<AIProviderConfig>() };
+    private bool IsLoading { get; set; } = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AISettings = await SettingsService.GetSettingsAsync();
+        if (AISettings.Providers == null)
+        {
+            AISettings.Providers = new List<AIProviderConfig>();
+        }
+        IsLoading = false;
+        StateHasChanged();
+    }
+
+    private void AddNewProvider()
+    {
+        if (AISettings.Providers.Count < 3)
+        {
+            var newProvider = new AIProviderConfig
+            {
+                Name = $"配置 {AISettings.Providers.Count + 1}",
+                Endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                Model = "qwen-max",
+                Temperature = 0.7f,
+                MaxTokens = 2048,
+                IsActive = !AISettings.Providers.Any()
+            };
+            AISettings.Providers.Add(newProvider);
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveProvider(AIProviderConfig provider)
+    {
+        AISettings.Providers.Remove(provider);
+        if (provider.IsActive && AISettings.Providers.Any())
+        {
+            AISettings.Providers.First().IsActive = true;
+        }
+        StateHasChanged();
+    }
+
+    private void SetActiveProvider(AIProviderConfig provider)
+    {
+        foreach (var p in AISettings.Providers)
+        {
+            p.IsActive = false;
+        }
+        provider.IsActive = true;
+        StateHasChanged();
+    }
+
+    private async Task TestProvider(AIProviderConfig provider)
+    {
+        var isValid = await SettingsService.ValidateProviderAsync(provider);
+        if (isValid)
+        {
+            Snackbar.Add("连接测试成功！", Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add("连接测试失败，请检查配置", Severity.Error);
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            await SettingsService.SaveSettingsAsync(AISettings);
+            Snackbar.Add("设置保存成功！", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"保存失败: {ex.Message}", Severity.Error);
+        }
+    }
+}

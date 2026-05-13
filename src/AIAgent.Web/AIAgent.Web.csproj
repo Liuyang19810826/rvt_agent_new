@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AssemblyName>AIAgent.Web</AssemblyName>
+    <RootNamespace>AIAgent.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MudBlazor" Version="8.5.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AIAgent.Core\AIAgent.Core.csproj" />
+    <ProjectReference Include="..\AIAgent.Infrastructure\AIAgent.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,27 @@
+# 编译输出
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+*.xml
+*.log
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 配置文件（避免提交敏感信息）
+appsettings.*.json
+!appsettings.json
+
+# Trae IDE 配置
+.trae/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
