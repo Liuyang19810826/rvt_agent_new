@@ -2,6 +2,7 @@ using AIAgent.Core.Models;
 using AIAgent.Core.Services;
 using AIAgent.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OAIChat = OpenAI.Chat;
@@ -16,17 +17,25 @@ public class ChatService : IChatService
     private readonly IMemoryService _memoryService;
     private readonly ISettingsService _settingsService;
     private readonly ILogger<ChatService> _logger;
+    private readonly IConfiguration _configuration;
 
     public ChatService(
         ApplicationDbContext dbContext,
         IMemoryService memoryService,
         ISettingsService settingsService,
-        ILogger<ChatService> logger)
+        ILogger<ChatService> logger,
+        IConfiguration configuration)
     {
         _dbContext = dbContext;
         _memoryService = memoryService;
         _settingsService = settingsService;
         _logger = logger;
+        _configuration = configuration;
+    }
+
+    private string GetSystemPrompt()
+    {
+        return _configuration["AI:SystemPrompt"] ?? "你是一个 helpful AI 助手。请用中文回答用户的问题。";
     }
 
     public async Task<AIAgent.Core.Models.ChatResponse> SendMessageAsync(AIAgent.Core.Models.ChatRequest request, CancellationToken cancellationToken = default)
@@ -60,7 +69,7 @@ public class ChatService : IChatService
             var messages = new List<OAIChat.ChatMessage>();
 
             // 添加系统提示
-            messages.Add(new OAIChat.SystemChatMessage("你是一个 helpful AI 助手。请用中文回答用户的问题。"));
+            messages.Add(new OAIChat.SystemChatMessage(GetSystemPrompt()));
 
             // 添加历史记录
             foreach (var h in history)
@@ -176,7 +185,7 @@ public class ChatService : IChatService
         var messages = new List<OAIChat.ChatMessage>();
 
         // 添加系统提示
-        messages.Add(new OAIChat.SystemChatMessage("你是一个 helpful AI 助手。请用中文回答用户的问题。"));
+        messages.Add(new OAIChat.SystemChatMessage(GetSystemPrompt()));
 
         // 添加历史记录
         foreach (var h in history)

@@ -1,0 +1,27 @@
+# 顶层 EditorConfig 文件
+root = true
+
+# 所有文件
+[*]
+charset = utf-8                  # 使用 UTF-8 编码（无 BOM）
+indent_style = space             # 使用空格缩进
+indent_size = 4                  # 缩进大小为 4
+end_of_line = crlf               # Windows 换行符
+trim_trailing_whitespace = true  # 删除行尾空格
+insert_final_newline = true      # 文件末尾插入空行
+
+# C# 文件
+[*.cs]
+indent_size = 4
+
+# Razor 文件
+[*.razor]
+indent_size = 4
+
+# JSON/XML/CSProj 文件
+[*.{json,xml,csproj}]
+indent_size = 2
+
+# 配置文件
+[*.{config,props,targets}]
+indent_size = 2
