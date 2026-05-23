@@ -86,16 +86,19 @@ function Get-ServiceStatus {
 function Install-MonitorService {
     Write-Log "Installing scheduled task for service monitoring..."
     
-    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File `"$ProjectRoot\services-monitor.ps1`" -Monitor"
+    # 使用 -WindowStyle Hidden 实现后台静默执行
+    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ProjectRoot\services-monitor.ps1`" -Monitor"
     $Trigger = New-ScheduledTaskTrigger -AtStartup
-    $Trigger2 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 365)
-    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable
+    # 修改检查间隔为120秒（2分钟）
+    $Trigger2 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Seconds 120) -RepetitionDuration (New-TimeSpan -Days 365)
+    # 添加 -Hidden 属性确保任务在后台运行
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable -Hidden
     $Principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
     
     try {
         Register-ScheduledTask -TaskName $ServiceName -Action $Action -Trigger $Trigger,$Trigger2 -Settings $Settings -Principal $Principal -Force
         Write-Log "Scheduled task '$ServiceName' installed successfully"
-        Write-Host "Service monitor installed. It will start automatically at boot and check every minute." -ForegroundColor Green
+        Write-Host "Service monitor installed. It will start automatically at boot and check every 120 seconds in background." -ForegroundColor Green
     }
     catch {
         Write-Log "Failed to install scheduled task: $_"

@@ -35,4 +35,13 @@ public class ChatResponse
     public bool IsSuccess { get; set; }
     public string? ErrorMessage { get; set; }
     public int? TokenUsed { get; set; }
+    public string? ThinkingProcess { get; set; }
+}
+
+public class ChatStreamChunk
+{
+    public string Content { get; set; } = string.Empty;
+    public bool IsThinking { get; set; }
+    public bool IsComplete { get; set; }
+    public int? TokenUsed { get; set; }
 }

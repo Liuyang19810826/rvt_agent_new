@@ -269,6 +269,136 @@ public class ChatService : IChatService
         }
     }
 
+    public async IAsyncEnumerable<ChatStreamChunk> SendMessageStreamWithTokenAsync(AIAgent.Core.Models.ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var provider = await _settingsService.GetActiveProviderAsync();
+        if (provider == null)
+        {
+            yield return new ChatStreamChunk { Content = "未配置有效的AI提供商", IsComplete = true };
+            yield break;
+        }
+
+        // 获取历史记录（最多50条）
+        var history = await _memoryService.GetHistoryAsync(request.UserId, request.SessionId, 50, cancellationToken);
+
+        // 创建 OpenAI 客户端
+        var chatClient = new OAIChat.ChatClient(
+            model: provider.Model,
+            credential: new ApiKeyCredential(provider.ApiKey),
+            options: new OpenAIClientOptions
+            {
+                Endpoint = new Uri(provider.Endpoint)
+            }
+        );
+
+        // 构建消息列表
+        var messages = new List<OAIChat.ChatMessage>();
+
+        // 添加系统提示
+        messages.Add(new OAIChat.SystemChatMessage(GetSystemPrompt()));
+
+        // 添加历史记录
+        foreach (var h in history)
+        {
+            if (h.Type == "user")
+                messages.Add(new OAIChat.UserChatMessage(h.Content));
+            else
+                messages.Add(new OAIChat.AssistantChatMessage(h.Content));
+        }
+
+        // 添加当前消息
+        messages.Add(new OAIChat.UserChatMessage(request.Message));
+
+        // 保存用户消息到数据库
+        var userMessage = new Core.Models.ChatMessage
+        {
+            SessionId = request.SessionId,
+            UserId = request.UserId,
+            Role = "user",
+            Content = request.Message,
+            Timestamp = DateTime.UtcNow
+        };
+        _dbContext.ChatMessages.Add(userMessage);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // 保存到记忆服务
+        await _memoryService.StoreAsync(new MemoryEntry
+        {
+            UserId = request.UserId,
+            SessionId = request.SessionId,
+            Content = request.Message,
+            Type = "user",
+            CreatedAt = DateTime.UtcNow
+        }, cancellationToken);
+
+        // 调用 AI 流式接口
+        var fullResponse = new System.Text.StringBuilder();
+        int? totalTokens = null;
+        var streamingResult = chatClient.CompleteChatStreamingAsync(messages, cancellationToken: cancellationToken);
+        await foreach (var update in streamingResult)
+        {
+            // 获取 token 使用量
+            if (update.Usage != null)
+            {
+                totalTokens = update.Usage.TotalTokenCount;
+            }
+
+            foreach (var contentPart in update.ContentUpdate)
+            {
+                if (!string.IsNullOrEmpty(contentPart.Text))
+                {
+                    fullResponse.Append(contentPart.Text);
+                    yield return new ChatStreamChunk
+                    {
+                        Content = contentPart.Text,
+                        IsThinking = false,
+                        IsComplete = false
+                    };
+                }
+            }
+        }
+
+        // 保存 AI 响应到数据库
+        var assistantMessage = new Core.Models.ChatMessage
+        {
+            SessionId = request.SessionId,
+            UserId = request.UserId,
+            Role = "assistant",
+            Content = fullResponse.ToString(),
+            Timestamp = DateTime.UtcNow,
+            ModelUsed = provider.Model
+        };
+        _dbContext.ChatMessages.Add(assistantMessage);
+
+        // 保存到记忆服务
+        await _memoryService.StoreAsync(new MemoryEntry
+        {
+            UserId = request.UserId,
+            SessionId = request.SessionId,
+            Content = fullResponse.ToString(),
+            Type = "assistant",
+            CreatedAt = DateTime.UtcNow
+        }, cancellationToken);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // 更新会话时间
+        var session = await _dbContext.ChatSessions.FindAsync(request.SessionId);
+        if (session != null)
+        {
+            session.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        // 发送完成标记和 token 消耗
+        yield return new ChatStreamChunk
+        {
+            Content = "",
+            IsComplete = true,
+            TokenUsed = totalTokens
+        };
+    }
+
     public async Task<ChatSession> CreateSessionAsync(string userId)
     {
         var session = new ChatSession

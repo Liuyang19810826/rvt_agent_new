@@ -83,15 +83,36 @@
                         }
                     }
                     
+                    @if (IsThinking)
+                    {
+                        <div class="message-container assistant-message">
+                            <MudPaper Elevation="1" Class="pa-3 rounded-lg message-paper" Style="background-color: #F0F8FF; border: 1px solid #7CB9B9;">
+                                <div style="color: #7CB9B9; font-style: italic;">
+                                    <MudProgressCircular Size="Size.Small" Color="Color.Primary" Indeterminate="true" Class="mr-2" />
+                                    正在思考...
+                                </div>
+                            </MudPaper>
+                        </div>
+                    }
+                    
                     @if (IsStreaming && !string.IsNullOrEmpty(StreamingContent))
                     {
                         <div class="message-container assistant-message">
                             <MudPaper Elevation="1" Class="pa-3 rounded-lg message-paper" Style="background-color: #FFFFFF; border: 1px solid #E8E8E8;">
                                 <div class="message-content" style="color: #333333;">
-                                    @((MarkupString)FormatMessageContent(StreamingContent))
+                                    @((MarkupString)FormatMessageContentWithThinking(StreamingContent))
                                     <span class="cursor-blink">|</span>
                                 </div>
                             </MudPaper>
+                        </div>
+                    }
+                    
+                    @if (LastTokenCount.HasValue)
+                    {
+                        <div style="text-align: center; margin-top: 8px;">
+                            <MudText Typo="Typo.caption" Style="color: #5A5A5A;">
+                                本次对话消耗: @LastTokenCount tokens
+                            </MudText>
                         </div>
                     }
                 </MudCardContent>
@@ -175,8 +196,10 @@
     private List<AIAgent.Core.Models.ChatMessage> Messages { get; set; } = new();
     private string CurrentMessage { get; set; } = "";
     private bool IsStreaming { get; set; }
+    private bool IsThinking { get; set; }
     private string StreamingContent { get; set; } = "";
     private string UserId { get; set; } = "default-user";
+    private int? LastTokenCount { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -234,6 +257,7 @@
 
         var userMessage = CurrentMessage;
         CurrentMessage = "";
+        LastTokenCount = null;
         
         // Add user message to UI
         Messages.Add(new AIAgent.Core.Models.ChatMessage
@@ -248,9 +272,8 @@
         StateHasChanged();
         await ScrollToBottom();
 
-        // Start streaming
-        IsStreaming = true;
-        StreamingContent = "";
+        // Show thinking indicator
+        IsThinking = true;
         StateHasChanged();
 
         var request = new AIAgent.Core.Models.ChatRequest
@@ -262,9 +285,23 @@
 
         try
         {
-            await foreach (var chunk in ChatService.SendMessageStreamAsync(request))
+            // Start streaming after a short delay to show thinking
+            await Task.Delay(500);
+            IsThinking = false;
+            IsStreaming = true;
+            StreamingContent = "";
+            StateHasChanged();
+
+            await foreach (var chunk in ChatService.SendMessageStreamWithTokenAsync(request))
             {
-                StreamingContent += chunk;
+                if (chunk.IsComplete)
+                {
+                    LastTokenCount = chunk.TokenUsed;
+                }
+                else
+                {
+                    StreamingContent += chunk.Content;
+                }
                 StateHasChanged();
                 await ScrollToBottom();
                 await Task.Delay(30); // 控制打字速度
@@ -326,6 +363,74 @@
         encoded = encoded.Replace("\n", "<br>");
         
         return encoded;
+    }
+
+    private string FormatMessageContentWithThinking(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return "";
+        
+        // 分离思考规划和执行命令部分
+        var thinkingSection = "";
+        var commandSection = "";
+        
+        if (content.Contains("## 思考规划"))
+        {
+            var parts = content.Split(new[] { "## 执行命令" }, StringSplitOptions.None);
+            if (parts.Length >= 2)
+            {
+                thinkingSection = parts[0].Replace("## 思考规划", "").Trim();
+                commandSection = parts[1].Trim();
+            }
+            else
+            {
+                thinkingSection = content.Replace("## 思考规划", "").Trim();
+            }
+        }
+        else
+        {
+            // 如果没有标记，尝试检测JSON部分
+            var jsonStart = content.IndexOf("{");
+            if (jsonStart > 0)
+            {
+                thinkingSection = content.Substring(0, jsonStart).Trim();
+                commandSection = content.Substring(jsonStart).Trim();
+            }
+            else
+            {
+                thinkingSection = content;
+            }
+        }
+        
+        // 构建 HTML 输出
+        var result = new System.Text.StringBuilder();
+        
+        // 思考规划部分
+        if (!string.IsNullOrEmpty(thinkingSection))
+        {
+            result.AppendLine("<div style='background-color: #F5F5F5; border-left: 4px solid #7CB9B9; padding: 12px; margin-bottom: 16px; border-radius: 4px;'>");
+            result.AppendLine("<div style='color: #7CB9B9; font-weight: bold; margin-bottom: 8px;'>💭 思考规划</div>");
+            result.AppendLine("<div style='color: #555555; font-size: 14px; line-height: 1.6;'>");
+            var encodedThinking = System.Net.WebUtility.HtmlEncode(thinkingSection);
+            encodedThinking = encodedThinking.Replace("\n", "<br>");
+            result.AppendLine(encodedThinking);
+            result.AppendLine("</div>");
+            result.AppendLine("</div>");
+        }
+        
+        // 执行命令部分
+        if (!string.IsNullOrEmpty(commandSection))
+        {
+            result.AppendLine("<div style='background-color: #F0F8FF; border: 1px solid #7CB9B9; padding: 12px; border-radius: 4px;'>");
+            result.AppendLine("<div style='color: #7CB9B9; font-weight: bold; margin-bottom: 8px;'>⚡ 执行命令</div>");
+            result.AppendLine("<pre style='margin: 0; white-space: pre-wrap; word-break: break-all; background-color: #FFFFFF; padding: 8px; border-radius: 4px; font-size: 13px; color: #333333;'>");
+            var encodedCommand = System.Net.WebUtility.HtmlEncode(commandSection);
+            result.AppendLine(encodedCommand);
+            result.AppendLine("</pre>");
+            result.AppendLine("</div>");
+        }
+        
+        return result.ToString();
     }
 
     private string GetSessionClass(AIAgent.Core.Models.ChatSession session)
